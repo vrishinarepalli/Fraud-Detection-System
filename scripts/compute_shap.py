@@ -14,7 +14,6 @@ import matplotlib.pyplot as plt
 import shap
 
 from src.data.loader import load_raw
-from src.data.preprocessor import build_preprocessor
 from src.features.engineer import build_features
 from src.models.train import get_feature_cols, time_based_split
 
@@ -36,7 +35,6 @@ def main():
 
     X_val = preprocessor.transform(val_df[feature_cols])
 
-    # Sample to keep SHAP computation tractable
     sample = X_val[:5_000]
 
     print("Computing SHAP values...")

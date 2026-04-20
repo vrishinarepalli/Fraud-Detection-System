@@ -4,26 +4,41 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-
-# Patch artifact loading before the app module is imported
-with patch("src.api.main.ARTIFACTS_DIR"):
-    from src.api.main import app
-
-client = TestClient(app)
+from src.api.main import app
 
 
-def test_health_check():
+def _mock_model() -> MagicMock:
+    m = MagicMock()
+    m.predict_proba.return_value = np.array([[0.9, 0.1]])
+    return m
+
+
+def _mock_preprocessor() -> MagicMock:
+    m = MagicMock()
+    m.transform.side_effect = lambda x: x
+    return m
+
+
+@pytest.fixture()
+def client():
+    """TestClient with joblib.load patched so the lifespan doesn't need real .pkl files."""
+    with patch("joblib.load", side_effect=[_mock_model(), _mock_preprocessor()]):
+        with TestClient(app) as c:
+            yield c
+
+
+def test_health_check(client):
     response = client.get("/health")
     assert response.status_code == 200
     assert "status" in response.json()
 
 
-def test_predict_missing_required_fields():
+def test_predict_missing_required_fields(client):
     response = client.post("/predict", json={"TransactionAmt": 100.0})
     assert response.status_code == 422
 
 
-def test_predict_negative_amount():
+def test_predict_negative_amount(client):
     payload = {
         "TransactionAmt": -50.0,
         "ProductCD": "W",
@@ -34,14 +49,7 @@ def test_predict_negative_amount():
     assert response.status_code == 422
 
 
-@patch.dict(
-    "src.api.main.model_store",
-    {
-        "model": MagicMock(predict_proba=MagicMock(return_value=np.array([[0.9, 0.1]]))),
-        "preprocessor": MagicMock(transform=MagicMock(side_effect=lambda x: x)),
-    },
-)
-def test_predict_approved_response():
+def test_predict_response_shape(client):
     payload = {
         "TransactionAmt": 50.0,
         "ProductCD": "W",

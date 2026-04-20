@@ -5,12 +5,11 @@ Usage:
     python scripts/tune_hyperparams.py --n-trials 50
 
 Outputs:
-    artifacts/best_params.yaml  (git-ignored — do not commit)
+    artifacts/best_params.yaml  (git-ignored -- do not commit)
 """
 import argparse
 from pathlib import Path
 
-import joblib
 import optuna
 import yaml
 from sklearn.metrics import roc_auc_score

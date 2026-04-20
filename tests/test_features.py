@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import pytest
 
 from src.features.engineer import (
     add_card_aggregates,
@@ -33,7 +32,7 @@ def test_card_aggregates_no_nulls():
     df = add_card_aggregates(df)
     assert df["card_daily_tx_count"].isna().sum() == 0
     assert df["tx_to_card_mean_ratio"].isna().sum() == 0
-    assert "_card_day" not in df.columns  # internal column must be dropped
+    assert "_card_day" not in df.columns
 
 
 def test_email_feature_is_binary():
