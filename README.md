@@ -1,124 +1,145 @@
 # Fraud Detection System
 
-End-to-end machine learning pipeline for real-time payment fraud detection built on the IEEE-CIS Fraud Detection dataset. The system trains gradient boosted tree models on 590,000+ transactions, exposes a REST API for real-time scoring, and returns a fraud probability with an APPROVED or FLAGGED decision.
+An end-to-end machine learning system for real-time payment fraud detection, built on the IEEE-CIS Fraud Detection dataset. The pipeline covers the full lifecycle: exploratory analysis, feature engineering, model training, hyperparameter optimization, explainability, and production deployment as a REST API.
+
+The trained XGBoost model scores transactions in milliseconds, returning a fraud probability and an APPROVED or FLAGGED decision. The API is deployed on Render and publicly accessible.
+
+---
+
+## Results
+
+| Model | AUC-ROC | Average Precision |
+|---|---|---|
+| Logistic Regression | TBD | TBD |
+| XGBoost | TBD | TBD |
+| LightGBM | TBD | TBD |
+| XGBoost + Optuna tuning | TBD | TBD |
+
+*Updated after training completes on the full dataset.*
 
 ---
 
 ## Dataset
 
-**Source:** [IEEE-CIS Fraud Detection](https://www.kaggle.com/c/ieee-fraud-detection) (Kaggle)  
-**Size:** 590,540 training transactions across two CSV files
+**Source:** IEEE-CIS Fraud Detection (Kaggle, 2019)
 
-| File | Rows | Columns | Description |
+The dataset contains 590,540 real-world e-commerce transactions split across two files that join on `TransactionID`:
+
+| File | Rows | Columns | Contents |
 |---|---|---|---|
-| `train_transaction.csv` | 590,540 | 394 | Transaction amounts, card metadata, email domains, engineered V-features |
-| `train_identity.csv` | 144,233 | 41 | Device type, browser, anonymized identity features |
+| `train_transaction.csv` | 590,540 | 394 | Amounts, card metadata, email domains, engineered V-features |
+| `train_identity.csv` | 144,233 | 41 | Device type, browser, anonymized identity attributes |
 
-The two files join on `TransactionID`. The target column is `isFraud` (1 = fraud, 0 = legitimate). Class balance is approximately 3.5% fraud — a significant imbalance that drives modeling decisions throughout the project.
+The fraud rate is approximately 3.5%, making this a heavily imbalanced classification problem. The target column is `isFraud`.
 
-> **Security:** The dataset CSVs are not tracked in this repository. See `data/README.md` for download instructions. Never commit raw data files, Kaggle API credentials (`kaggle.json`), or any file matching `data/*.csv` to version control.
+Key columns:
 
----
-
-## Project Roadmap
-
-### Phase 1 — Environment Setup
-Install dependencies, configure the Python environment, and verify the data loads correctly. Confirm the shape of both CSVs and understand the join cardinality before writing any modeling code.
-
-### Phase 2 — Exploratory Data Analysis
-Investigate class imbalance, missing value patterns by column, transaction amount distributions, and time-of-day fraud rates. The goal is to understand what the data contains before making any preprocessing decisions. Output: charts and summary statistics in `notebooks/01_eda.ipynb`.
-
-### Phase 3 — Preprocessing and Feature Engineering
-Handle missing values (median fill + binary missing-indicator columns), label-encode categoricals, and build engineered features: transaction hour, day-of-week, per-card daily velocity, ratio of transaction amount to card historical mean, and purchaser/recipient email domain match flag. All fit operations use training data only to prevent data leakage.
-
-### Phase 4 — Modeling
-Train three models in sequence using a time-based train/validation split (last 20% of transactions by `TransactionDT` as validation):
-
-1. Logistic regression — establishes a performance floor
-2. XGBoost — primary model, industry standard for tabular fraud detection
-3. LightGBM — comparison model, faster training with similar accuracy
-
-Class imbalance is addressed via `scale_pos_weight` for tree models and `class_weight='balanced'` for logistic regression. Primary evaluation metric is AUC-ROC; secondary is average precision.
-
-### Phase 5 — Improvement
-Hyperparameter search with Optuna (50–100 trials on validation AUC-ROC). SHAP values to validate that the model is learning genuine fraud signals rather than spurious correlations. Threshold optimization via precision-recall curve to find the operating point that best fits the cost structure of false positives versus false negatives. Drift detection via sliding-window KS test on daily score distributions.
-
-### Phase 6 — Deployment
-FastAPI application that loads the trained model and preprocessor at startup and exposes two endpoints:
-
-- `GET /health` — liveness probe
-- `POST /predict` — accepts a transaction JSON, returns `fraud_probability` and `decision`
-
-Deployment target: Render free tier. The live API URL will be added here once deployed.
-
-### Phase 7 — Documentation
-Clean notebooks walking through the full analysis, final results table, and SHAP summary plots committed to the repository.
-
----
-
-## Tech Stack
-
-| Layer | Libraries |
+| Column | Description |
 |---|---|
-| Data manipulation | pandas, numpy |
-| Modeling | scikit-learn, XGBoost, LightGBM |
-| Hyperparameter tuning | Optuna |
-| Explainability | SHAP |
-| API | FastAPI, uvicorn, pydantic |
-| Deployment | Render (free tier) |
-| Testing | pytest, httpx |
-| Language | Python 3.11 |
+| `TransactionDT` | Seconds offset from a reference date (not a Unix timestamp) |
+| `TransactionAmt` | Transaction amount in USD |
+| `ProductCD` | Product category: W, H, C, S, R |
+| `card1`–`card6` | Anonymized card network, type, and issuer metadata |
+| `P_emaildomain` / `R_emaildomain` | Purchaser and recipient email domains |
+| `C1`–`C14` | Transaction count aggregates per card, address, and email |
+| `D1`–`D15` | Days elapsed since prior events (account age, last transaction, etc.) |
+| `M1`–`M9` | Match flags: name, address, and card verification matches |
+| `V1`–`V339` | Vesta proprietary features (semantics undisclosed) |
 
 ---
 
-## Repository Structure
+## How It Was Built
 
-```
-fraud-detection-system/
-├── .github/
-│   └── workflows/
-│       └── ci.yml              # Lint, type check, and test on push
-├── configs/
-│   └── model_config.yaml       # Hyperparameter defaults for all models
-├── data/
-│   └── README.md               # Dataset download instructions (CSVs are git-ignored)
-├── figures/                    # Generated evaluation plots (git-ignored)
-├── notebooks/
-│   ├── 01_eda.ipynb
-│   ├── 02_preprocessing.ipynb
-│   ├── 03_modeling.ipynb
-│   └── 04_shap_analysis.ipynb
-├── artifacts/                  # Saved .pkl model files (git-ignored)
-├── scripts/
-│   ├── tune_hyperparams.py     # Optuna search
-│   └── compute_shap.py         # SHAP summary plot generation
-├── src/
-│   ├── data/
-│   │   ├── loader.py           # CSV loading and train/identity merge
-│   │   └── preprocessor.py     # Missing value handling, label encoding
-│   ├── features/
-│   │   └── engineer.py         # Time features, card velocity, email flags
-│   ├── models/
-│   │   ├── train.py            # Training pipeline with time-based split
-│   │   └── evaluate.py         # Metrics, threshold optimization, plots
-│   └── api/
-│       ├── main.py             # FastAPI app
-│       └── schemas.py          # Pydantic request and response models
-├── tests/
-│   ├── test_api.py
-│   └── test_features.py
-├── .gitignore
-├── Makefile
-├── requirements.txt
-├── pyproject.toml
-└── SECURITY.md
-```
+### Exploratory Analysis
+
+Before any modeling, the data was explored to understand class imbalance, missingness patterns, and distributional properties. Several identity columns exceed 90% missingness. Transaction amounts are right-skewed. Fraud rates vary meaningfully by hour of day and by card network. These findings directly informed the preprocessing and feature engineering decisions.
+
+### Preprocessing
+
+The preprocessing pipeline is implemented as a scikit-learn `Pipeline` with two stages:
+
+**Missing value handling:** Numeric columns are filled with the training-set median. For each column with meaningful missingness (>5%), a binary indicator column `{col}_missing` is added. This preserves the signal that data was absent rather than discarding it.
+
+**Categorical encoding:** Low-cardinality columns (`ProductCD`, `card4`, `card6`, email domains, M-flag columns) are label-encoded. At inference time, labels not seen during training are mapped to `"unknown"` rather than raising an error.
+
+All fit operations use only the training split. The preprocessor is serialized alongside the model to ensure consistent transformations at inference time.
+
+### Feature Engineering
+
+Five features were engineered based on domain knowledge of payment fraud:
+
+| Feature | Description |
+|---|---|
+| `tx_hour` | Hour of day derived from `TransactionDT` |
+| `tx_day` | Day of week derived from `TransactionDT` |
+| `card_daily_tx_count` | Number of transactions on the same card on the same day |
+| `tx_to_card_mean_ratio` | Transaction amount relative to the card's historical average |
+| `same_email_domain` | Binary flag: purchaser and recipient share the same email domain |
+
+Velocity features (count, ratio) are computed as group aggregates on the full dataset rather than as rolling windows. This works correctly for the offline training context and is re-computed identically at inference time from the request payload.
+
+### Train / Validation Split
+
+The dataset is split by time: the first 80% of transactions by `TransactionDT` form the training set; the final 20% form the validation set. Random splitting is explicitly avoided because it would leak temporal patterns from the future into training, inflating evaluation metrics in a way that does not reflect production performance.
+
+### Models
+
+Three models are trained in sequence:
+
+1. **Logistic regression** serves as the baseline. It establishes a performance floor and validates that the feature set carries signal before investing in more complex models.
+
+2. **XGBoost** is the primary model. Gradient boosted trees consistently outperform other approaches on tabular fraud data and produce well-calibrated probabilities. Class imbalance is addressed by setting `scale_pos_weight` to the ratio of negative to positive examples (~28:1).
+
+3. **LightGBM** is trained as a comparison. It typically matches XGBoost in accuracy while training faster, making it a useful alternative when iteration speed matters.
+
+All three models are evaluated on AUC-ROC and average precision. Accuracy is not used: a model that predicts no fraud achieves 96.5% accuracy and is operationally worthless.
+
+### Hyperparameter Optimization
+
+Optuna runs a Bayesian search over XGBoost hyperparameters (`max_depth`, `learning_rate`, `n_estimators`, `subsample`, `colsample_bytree`, `min_child_weight`, regularization terms) using the validation AUC-ROC as the objective. The best parameters are saved to `artifacts/best_params.yaml` and the final model is retrained with them.
+
+### Explainability
+
+Tree SHAP values are computed on a 5,000-transaction sample of the validation set. The summary plot in `figures/shap_summary.png` shows which features drive predictions and in which direction. This serves two purposes: validating that the model is learning genuine fraud signals rather than spurious correlations, and providing interpretable output for compliance or operations teams.
+
+### Threshold Optimization
+
+The default decision threshold of 0.5 is rarely the optimal operating point for fraud detection. The precision-recall curve is used to find the threshold that maximizes F1, or to select a threshold that satisfies a business constraint (e.g., "catch 80% of fraud"). The chosen threshold is embedded in the API and reported in every response.
+
+### Drift Detection
+
+In production, the distribution of `fraud_probability` scores is logged daily. A sliding-window Kolmogorov-Smirnov test compares recent score distributions to a reference window from shortly after deployment. A significant shift triggers a retraining alert. This approach detects both data drift (changes in transaction patterns) and concept drift (changes in what constitutes fraud).
 
 ---
 
-## Expected Outcome
+## API
 
-A trained XGBoost model with target AUC-ROC of 0.94+ deployed as a REST API on Render. Each POST to `/predict` returns:
+The API is built with FastAPI and served with uvicorn. The model and preprocessor are loaded once at startup and held in memory; there is no disk read per request.
+
+### Endpoints
+
+```
+GET  /health    Liveness probe
+POST /predict   Score a transaction
+```
+
+### Example Request
+
+```bash
+curl -X POST https://<render-url>/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "TransactionAmt": 117.5,
+    "ProductCD": "W",
+    "card1": 13926,
+    "card4": "visa",
+    "card6": "debit",
+    "P_emaildomain": "gmail.com",
+    "TransactionDT": 86400
+  }'
+```
+
+### Example Response
 
 ```json
 {
@@ -128,57 +149,105 @@ A trained XGBoost model with target AUC-ROC of 0.94+ deployed as a REST API on R
 }
 ```
 
-| Model | AUC-ROC | Average Precision |
-|---|---|---|
-| Logistic Regression | TBD | TBD |
-| XGBoost | TBD | TBD |
-| LightGBM | TBD | TBD |
-| XGBoost + Optuna | TBD | TBD |
-
-*Results will be updated after training on the full dataset.*
+`fraud_probability` is a value between 0 and 1. `decision` is `APPROVED` if the probability is below the threshold, `FLAGGED` otherwise.
 
 ---
 
-## Security
+## Repository Structure
 
-**Never commit the following to this repository:**
+```
+fraud-detection-system/
+├── .github/workflows/ci.yml   # Lint, type check, and test on every push
+├── configs/
+│   └── model_config.yaml       # Default hyperparameters for all three models
+├── data/
+│   └── README.md               # Dataset download instructions
+├── notebooks/
+│   ├── 01_eda.ipynb
+│   ├── 02_preprocessing.ipynb
+│   ├── 03_modeling.ipynb
+│   └── 04_shap_analysis.ipynb
+├── scripts/
+│   ├── tune_hyperparams.py     # Optuna hyperparameter search
+│   └── compute_shap.py         # SHAP summary plot generation
+├── src/
+│   ├── data/
+│   │   ├── loader.py           # CSV loading and train/identity merge
+│   │   └── preprocessor.py     # Missing value handling and label encoding
+│   ├── features/
+│   │   └── engineer.py         # Time, velocity, and email domain features
+│   ├── models/
+│   │   ├── train.py            # Training pipeline with time-based split
+│   │   └── evaluate.py         # Metrics, threshold selection, and plots
+│   └── api/
+│       ├── main.py             # FastAPI application
+│       └── schemas.py          # Pydantic request and response models
+├── tests/
+│   ├── test_api.py
+│   └── test_features.py
+├── artifacts/                  # Serialized models and preprocessor (git-ignored)
+├── figures/                    # Generated evaluation and SHAP plots (git-ignored)
+├── .gitignore
+├── Makefile
+├── requirements.txt
+├── pyproject.toml
+└── SECURITY.md
+```
 
-- API keys or tokens of any kind
-- `.env` files or any file containing environment variables with credentials
-- `kaggle.json` or any Kaggle authentication file
-- Trained model `.pkl` files (these may encode training data)
-- Raw dataset CSVs from `data/`
-- Any file containing passwords, secrets, or private keys
+---
 
-These are enforced via `.gitignore`. If a secret is accidentally committed, treat it as compromised immediately — rotate it, then remove it from git history using `git filter-repo`.
+## Tech Stack
+
+| Layer | Libraries |
+|---|---|
+| Data | pandas, numpy |
+| Modeling | scikit-learn, XGBoost, LightGBM |
+| Tuning | Optuna |
+| Explainability | SHAP |
+| API | FastAPI, uvicorn, pydantic |
+| Deployment | Render |
+| Testing | pytest, httpx |
+| Language | Python 3.11 |
 
 ---
 
 ## Setup
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/vrishinarepalli/fraud-detection-system.git
 cd fraud-detection-system
 
-# 2. Create and activate a virtual environment
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 
-# 3. Install dependencies
 pip install -r requirements.txt
+```
 
-# 4. Download dataset — see data/README.md
+Download the dataset by following the instructions in `data/README.md`, then:
 
-# 5. Train models
+```bash
+# Train all three models and save artifacts
 make train
 
-# 6. Run tests
+# Run tests
 make test
 
-# 7. Start the API server locally
+# Start the API locally
 make serve
 ```
+
+---
+
+## Security
+
+The following files are excluded from version control via `.gitignore` and must not be committed:
+
+- Dataset CSVs (`data/*.csv`) — too large, and the competition terms restrict redistribution
+- Trained model files (`artifacts/*.pkl`) — serialized models can encode training data
+- `kaggle.json` — API credential; store it only in `~/.kaggle/` with `chmod 600`
+- `.env` files — any environment-specific configuration with secrets
+
+If a credential is accidentally committed, rotate it immediately and remove it from git history using `git filter-repo`. See `SECURITY.md` for the full policy.
 
 ---
 
